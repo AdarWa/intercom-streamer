@@ -1,11 +1,11 @@
 # Start from the GoCV image (has Go + OpenCV preinstalled)
-FROM gocv/opencv:latest
+FROM gocv/opencv:4.10.0-gocv-0.38.0
 
 # Set working directory
 WORKDIR /app
 
 # Install TBB (needed for OpenCV build in the base image)
-RUN apt-get update && apt-get install -y libtbb-dev && rm -rf /var/lib/apt/lists/*
+# RUN apt-get update && apt-get install -y libtbb-dev && rm -rf /var/lib/apt/lists/*
 
 # Copy go.mod and go.sum first (to leverage caching)
 COPY go.mod go.sum ./
@@ -16,7 +16,7 @@ RUN go mod download
 # Copy the rest of the source code
 COPY . .
 
-ENV CGO_LDFLAGS="-ltbb"
+# ENV CGO_LDFLAGS="-ltbb"
 
 # Build the project
 RUN go build -o app .
