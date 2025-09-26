@@ -1,36 +1,31 @@
-# Use a Raspberry Pi / ARM64 base image with Go installed
-FROM arm64v8/golang:1.21-bullseye
+# Use Raspberry Pi compatible Python base image
+FROM python:3.12-slim-bullseye
 
-# Install dependencies needed for GoCV Raspberry Pi install
+# Install dependencies for OpenCV
 RUN apt-get update && apt-get install -y \
-    build-essential cmake pkg-config git libjpeg-dev libpng-dev libtiff-dev \
-    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libxvidcore-dev \
-    libx264-dev libgtk-3-dev libatlas-base-dev gfortran libtbb2 libtbb-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    v4l-utils \
+    pkg-config \
+    python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /opt
+# Install OpenCV headless (no GUI, smaller image)
+RUN pip install --no-cache-dir opencv-python-headless numpy
 
-# Clone GoCV repository
-RUN git clone https://github.com/hybridgroup/gocv.git
+# Copy your Python script into the container
+COPY main.py /app/main.py
 
-WORKDIR /opt/gocv
-
-# Install GoCV for Raspberry Pi
-RUN make install_raspi
-
-# Set Go environment
-ENV GOPATH=/go
-ENV PATH=$PATH:$GOPATH/bin
-
-# Copy your Go project
 WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
 
-# Build your GoCV project
-RUN go build -o app .
+# Expose port for MJPEG streaming
+EXPOSE 8000
 
-# Run the app
-CMD ["./app"]
+# Run the script
+CMD ["python", "main.py"]

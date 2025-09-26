@@ -1,9 +1,9 @@
 services:
   intercom-streamer:
     build: .
-    container_name: intercom-streamer
-    environment:
-      - DEVICE_ID=0
-      - HOST=0.0.0.0:5136
+    container_name: intercom_streamer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # Expose MJPEG stream
     devices:
-      - /dev/video0:/dev/video0   # give access to webcam
+      - "/dev/video0:/dev/video0"  # USB camera
