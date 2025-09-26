@@ -19,7 +19,7 @@ COPY . .
 # ENV CGO_LDFLAGS="-ltbb"
 
 # Build the project
-RUN go build -o app .
+RUN go build -tags example -o app .
 
 # Run by default
 CMD ["./app"]
