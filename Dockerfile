@@ -4,6 +4,9 @@ FROM gocv/opencv:latest
 # Set working directory
 WORKDIR /app
 
+# Install TBB (needed for OpenCV build in the base image)
+RUN apt-get update && apt-get install -y libtbb-dev && rm -rf /var/lib/apt/lists/*
+
 # Copy go.mod and go.sum first (to leverage caching)
 COPY go.mod go.sum ./
 
