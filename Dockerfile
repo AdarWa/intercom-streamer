@@ -1,5 +1,5 @@
 # Use a Raspberry Pi / ARM64 base image with Go installed
-FROM golang:1.21-bullseye
+FROM arm64v8/golang:1.21-bullseye
 
 # Install dependencies needed for GoCV Raspberry Pi install
 RUN apt-get update && apt-get install -y \
