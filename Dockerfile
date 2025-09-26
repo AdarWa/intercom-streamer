@@ -16,6 +16,8 @@ RUN go mod download
 # Copy the rest of the source code
 COPY . .
 
+ENV CGO_LDFLAGS="-ltbb"
+
 # Build the project
 RUN go build -o app .
 
