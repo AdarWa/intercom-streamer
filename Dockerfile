@@ -1,32 +1,36 @@
-# Stage 1: Build GoCV using prebuilt static OpenCV
-FROM --platform=$BUILDPLATFORM ghcr.io/hybridgroup/opencv:4.12.0-static AS gocv-build
+# Use a Raspberry Pi / ARM64 base image with Go installed
+FROM golang:1.21-bullseye
 
-# Install Go
-ENV GO_VERSION=1.22.2
-RUN wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -O /tmp/go.tar.gz && \
-    tar -C /usr/local -xzf /tmp/go.tar.gz && rm /tmp/go.tar.gz
-ENV PATH=$PATH:/usr/local/go/bin
+# Install dependencies needed for GoCV Raspberry Pi install
+RUN apt-get update && apt-get install -y \
+    build-essential cmake pkg-config git libjpeg-dev libpng-dev libtiff-dev \
+    libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libxvidcore-dev \
+    libx264-dev libgtk-3-dev libatlas-base-dev gfortran libtbb2 libtbb-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /opt
+
+# Clone GoCV repository
+RUN git clone https://github.com/hybridgroup/gocv.git
+
+WORKDIR /opt/gocv
+
+# Install GoCV for Raspberry Pi
+RUN make install_raspi
+
+# Set Go environment
 ENV GOPATH=/go
-RUN chmod +x /usr/local/go/bin/go
+ENV PATH=$PATH:$GOPATH/bin
 
+# Copy your Go project
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
 
-# Install pkg-config in case it's missing
-RUN apt-get update && apt-get install -y pkg-config && rm -rf /var/lib/apt/lists/*
+# Build your GoCV project
+RUN go build -o app .
 
-# Copy GoCV source
-COPY . /go/src/gocv.io/x/gocv
-WORKDIR /go/src/gocv.io/x/gocv
-
-# Set CGO flags for static linking
-ENV CGO_CFLAGS="-I/usr/local/include/opencv4"
-ENV CGO_LDFLAGS="-L/usr/local/lib -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -ltbb -ldl -lm -lpthread"
-
-# Build gocv_version statically
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
-    go build -tags static -x -o /build/gocv_version ./cmd/version/
-
-# Stage 2: Minimal runtime image
-FROM debian:bullseye-slim AS final
-COPY --from=gocv-build /build/gocv_version /run/gocv_version
-CMD ["/run/gocv_version"]
+# Run the app
+CMD ["./app"]
