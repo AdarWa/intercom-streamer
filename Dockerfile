@@ -1,5 +1,5 @@
 # Start from the GoCV image (has Go + OpenCV preinstalled)
-FROM gocv/opencv:4.10.0-gocv-0.38.0
+FROM ghcr.io/hybridgroup/opencv:4.12.0
 
 # Set working directory
 WORKDIR /app
