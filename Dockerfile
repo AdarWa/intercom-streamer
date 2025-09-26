@@ -7,6 +7,8 @@ RUN wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -O /tmp/go.tar.
     tar -C /usr/local -xzf /tmp/go.tar.gz && rm /tmp/go.tar.gz
 ENV PATH=$PATH:/usr/local/go/bin
 ENV GOPATH=/go
+RUN chmod +x /usr/local/go/bin/go
+
 
 # Install pkg-config in case it's missing
 RUN apt-get update && apt-get install -y pkg-config && rm -rf /var/lib/apt/lists/*
