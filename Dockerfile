@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install OpenCV headless (no GUI, smaller image)
-RUN pip install --no-cache-dir opencv-python-headless numpy
+RUN pip install --no-cache-dir opencv-python-headless numpy flask
 
 # Copy your Python script into the container
 COPY main.py /app/main.py
