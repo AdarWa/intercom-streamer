@@ -142,7 +142,7 @@ if __name__ == "__main__":
         camera_index = min(cameras)
     color = os.getenv("COLOR","#2596be")
     tolerance = (int(os.getenv("TOLERANCE_H", "10")), int(os.getenv("TOLERANCE_S", "10")), int(os.getenv("TOLERANCE_V", "10")))
-    no_ring_ratio = int(os.getenv("NO_RING_RATIO", "0.9"))
+    no_ring_ratio = float(os.getenv("NO_RING_RATIO", "0.9"))
     frame_proc = FrameProccessor(notify_callback, color=color, tolerance=tolerance, no_ring_color_ratio=no_ring_ratio)
     logger.info("starting frame thread")
     frame_thread = FrameThread(camera_index=camera_index, resolution=res, hash_score_threshold=hash_score_threshold)
