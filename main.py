@@ -1,14 +1,22 @@
 import cv2
 from flask import Flask, Response
+import os
 
 app = Flask(__name__)
 
-# Open the USB camera (usually 0 for the first camera)
-cap = cv2.VideoCapture(0)
+def list_cameras(max_cameras=5):
+    available = []
+    for i in range(max_cameras):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            available.append(i)
+            cap.release()
+    return available
 
-# Optional: set resolution
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+cap = cv2.VideoCapture(min(list_cameras()))
+
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(os.getenv("FRAME_WIDTH", "640")))
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(os.getenv("FRAME_HEIGHT", "480")))
 
 def generate_frames():
     while True:
