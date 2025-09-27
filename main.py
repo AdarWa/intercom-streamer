@@ -145,7 +145,7 @@ if __name__ == "__main__":
     no_ring_ratio = float(os.getenv("NO_RING_RATIO", "0.9"))
     frame_proc = FrameProccessor(notify_callback, color=color, tolerance=tolerance, no_ring_color_ratio=no_ring_ratio)
     logger.info("starting frame thread")
-    frame_thread = FrameThread(camera_index=camera_index, resolution=res, hash_score_threshold=hash_score_threshold)
+    frame_thread = FrameThread(camera_index=camera_index, resolution=res, hash_score_threshold=hash_score_threshold, frame_proccessor=frame_proc)
     frame_thread.start()
     app.run(host='0.0.0.0', port=5000)
     logger.info("started http server")
