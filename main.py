@@ -13,6 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+main_frame_thread = None
 
 def notify_callback(ring_state):
     logger.info(f"notify callback got {ring_state} ringstate")
@@ -131,6 +132,11 @@ def generate_frames():
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/force_proc')
+def force_proc():
+    main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame)
+    return "OK"
+
 if __name__ == "__main__":
     res = (int(os.getenv("FRAME_WIDTH", "640")), int(os.getenv("FRAME_HEIGHT", "480")))
     hash_score_threshold = int(os.getenv("HASH_SCORE_THRESHOLD", "50"))
@@ -147,5 +153,6 @@ if __name__ == "__main__":
     logger.info("starting frame thread")
     frame_thread = FrameThread(camera_index=camera_index, resolution=res, hash_score_threshold=hash_score_threshold, frame_proccessor=frame_proc)
     frame_thread.start()
+    main_frame_thread = frame_thread
     app.run(host='0.0.0.0', port=5000)
     logger.info("started http server")
