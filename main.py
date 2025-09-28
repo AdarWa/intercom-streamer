@@ -4,6 +4,10 @@ from flask import Flask, Response
 import os
 import numpy as np
 import logging
+import mqtt
+
+client = None
+MQTT_STATE_TOPIC = os.getenv("MQTT_STATE_TOPIC", "intercom-streamer/state")
 
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOGGING_LEVEL", "INFO")),
@@ -16,6 +20,8 @@ main_frame_thread = None
 
 def notify_callback(ring_state):
     logger.info(f"notify callback got {ring_state} ringstate")
+    assert client
+    client.publish(MQTT_STATE_TOPIC, str(ring_state).lower())
 
 def quick_hash(img, size=16):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -133,9 +139,12 @@ def generate_frames():
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+def force_proc_():
+    main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame) # type: ignore
+
 @app.route('/force_proc')
 def force_proc():
-    main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame) # type: ignore
+    force_proc_()
     return "OK"
 
 if __name__ == "__main__":
@@ -155,5 +164,17 @@ if __name__ == "__main__":
     frame_thread = FrameThread(camera_index=camera_index, resolution=res, hash_score_threshold=hash_score_threshold, frame_proccessor=frame_proc)
     frame_thread.start()
     main_frame_thread = frame_thread
+    
+    logger.info("trying to connect to MQTT broker")
+    
+    client = mqtt.MQTT(
+        os.getenv("MQTT_ADDR", "mqtt5"),
+        int(os.getenv("MQTT_PORT", "1883")),
+        os.getenv("MQTT_USERNAME"),
+        os.getenv("MQTT_PASSWORD"),
+        int(os.getenv("MQTT_TIMEOUT", "5"))
+    )
+    force_proc_()
+    
     app.run(host='0.0.0.0', port=5000)
     logger.info("started http server")
