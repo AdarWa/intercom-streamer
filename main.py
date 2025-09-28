@@ -174,7 +174,6 @@ if __name__ == "__main__":
         os.getenv("MQTT_PASSWORD"),
         int(os.getenv("MQTT_TIMEOUT", "5"))
     )
-    force_proc_()
     
     app.run(host='0.0.0.0', port=5000)
     logger.info("started http server")
