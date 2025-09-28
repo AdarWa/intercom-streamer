@@ -58,8 +58,15 @@ def get_hsv_bounds(hex_color, tol_h=10, tol_s=40, tol_v=40):
 class FrameProccessor:
     def __init__(self, callback, color="#2596be", tolerance=(10,10,10), no_ring_color_ratio=0.9):
         self.upper, self.lower = get_hsv_bounds(color, *tolerance)
-        logger.debug(self.upper)
-        logger.debug(self.lower)
+        # Convert HSV bounds to RGB for debugging
+        logger.debug(f"HSV upper: {self.upper}")
+        logger.debug(f"HSV lower: {self.lower}")
+        upper_bgr = cv2.cvtColor(np.uint8([[self.upper]]), cv2.COLOR_HSV2BGR)[0][0]
+        lower_bgr = cv2.cvtColor(np.uint8([[self.lower]]), cv2.COLOR_HSV2BGR)[0][0]
+        upper_rgb = upper_bgr[::-1]
+        lower_rgb = lower_bgr[::-1]
+        logger.debug(f"RGB upper: {upper_rgb}")
+        logger.debug(f"RGB lower: {lower_rgb}")
         self.no_ring_color_ratio = no_ring_color_ratio
         self.callback = callback
     
