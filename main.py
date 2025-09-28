@@ -7,7 +7,7 @@ import numpy as np
 import logging
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOGGING_LEVEL", "INFO")),
     format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -58,6 +58,8 @@ def get_hsv_bounds(hex_color, tol_h=10, tol_s=40, tol_v=40):
 class FrameProccessor:
     def __init__(self, callback, color="#2596be", tolerance=(10,10,10), no_ring_color_ratio=0.9):
         self.upper, self.lower = get_hsv_bounds(color, *tolerance)
+        logger.debug(self.upper)
+        logger.debug(self.lower)
         self.no_ring_color_ratio = no_ring_color_ratio
         self.callback = callback
     
