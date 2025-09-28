@@ -41,9 +41,10 @@ def hex_to_hsv_opencv(hex_color: str):
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)[0][0] # type: ignore
     return hsv  # [H, S, V] with H in 0–179, S/V in 0–255
 
-def get_hsv_bounds(hex_color, tol_h=10, tol_s=40, tol_v=40):
+def get_hsv_bounds(hex_color, tolerance=(10, 40, 40)):
     hsv = hex_to_hsv_opencv(hex_color)
     h, s, v = hsv
+    tol_h, tol_s, tol_v = tolerance
 
     lower = np.array([max(h - tol_h, 0),
                       max(s - tol_s, 0),
@@ -56,22 +57,14 @@ def get_hsv_bounds(hex_color, tol_h=10, tol_s=40, tol_v=40):
 
 
 class FrameProccessor:
-    def __init__(self, callback, color="#2596be", tolerance=(10,10,10), no_ring_color_ratio=0.9):
-        self.upper, self.lower = get_hsv_bounds(color, *tolerance)
-        # Convert HSV bounds to RGB for debugging
-        logger.debug(f"HSV upper: {self.upper}")
-        logger.debug(f"HSV lower: {self.lower}")
-        upper_bgr = cv2.cvtColor(np.uint8([[self.upper]]), cv2.COLOR_HSV2BGR)[0][0]
-        lower_bgr = cv2.cvtColor(np.uint8([[self.lower]]), cv2.COLOR_HSV2BGR)[0][0]
-        upper_rgb = upper_bgr[::-1]
-        lower_rgb = lower_bgr[::-1]
-        logger.debug(f"RGB upper: {upper_rgb}")
-        logger.debug(f"RGB lower: {lower_rgb}")
+    def __init__(self, callback, color="#2596be", tolerance=(10, 40, 40), no_ring_color_ratio=0.9):
+        self.lower, self.upper = get_hsv_bounds(color, tolerance)
         self.no_ring_color_ratio = no_ring_color_ratio
         self.callback = callback
     
     def proccess_frame(self, frame):
-        mask = cv2.inRange(frame, self.lower, self.upper)
+        hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv_frame, self.lower, self.upper)
         color_ratio = np.sum(mask > 0) / mask.size
         if color_ratio >= self.no_ring_color_ratio:
             logger.info(f"frame is {color_ratio*100}% colored; determined no ring")
