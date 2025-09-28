@@ -1,4 +1,3 @@
-import colorsys
 from threading import Thread
 import cv2
 from flask import Flask, Response
@@ -67,10 +66,10 @@ class FrameProccessor:
         mask = cv2.inRange(hsv_frame, self.lower, self.upper)
         color_ratio = np.sum(mask > 0) / mask.size
         if color_ratio >= self.no_ring_color_ratio:
-            logger.info(f"frame is {color_ratio*100}% colored; determined no ring")
+            logger.info(f"frame is {round(color_ratio*100, 2)}% colored; determined no ring")
             self.callback(False)
         else:
-            logger.info(f"frame is {color_ratio*100}% colored; determined ring")
+            logger.info(f"frame is {round(color_ratio*100, 2)}% colored; determined ring")
             self.callback(True)
 
 class FrameThread(Thread):
@@ -136,7 +135,7 @@ def video_feed():
 
 @app.route('/force_proc')
 def force_proc():
-    main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame)
+    main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame) # type: ignore
     return "OK"
 
 if __name__ == "__main__":
