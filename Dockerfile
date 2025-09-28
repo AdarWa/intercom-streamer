@@ -1,5 +1,9 @@
 # Use Raspberry Pi compatible Python base image
-FROM python:3.12-slim-bullseye
+FROM python:3.12-slim
+
+
+WORKDIR /app
+
 
 # Install dependencies for OpenCV
 RUN apt-get update && apt-get install -y \
@@ -16,14 +20,22 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install OpenCV headless (no GUI, smaller image)
-RUN pip install --no-cache-dir opencv-python-headless numpy flask
+# Install curl so we can get uv
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir /app
+# Add uv to PATH (uv installs in ~/.local/bin)
+ENV PATH="/root/.local/bin:$PATH"
+
+# Copy dependency file(s) first for caching
+COPY pyproject.toml uv.lock* ./
+
+# Install dependencies (using uv)
+RUN uv export > requirements.txt \
+    && uv pip install --system --no-cache-dir -r requirements.txt
 
 COPY *.py /app
-
-WORKDIR /app
 
 # Expose port for MJPEG streaming
 EXPOSE 8000
