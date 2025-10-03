@@ -5,6 +5,7 @@ import os
 import numpy as np
 import logging
 import mqtt
+import time
 
 client = None
 MQTT_STATE_TOPIC = os.getenv("MQTT_STATE_TOPIC", "intercom-streamer/state")
@@ -20,7 +21,9 @@ main_frame_thread = None
 
 def notify_callback(ring_state):
     logger.info(f"notify callback got {ring_state} ringstate")
-    assert client
+    if client is None:
+        logger.warning("MQTT client not ready; dropping state update")
+        return
     client.publish(MQTT_STATE_TOPIC, str(ring_state).lower())
 
 def quick_hash(img, size=16):
@@ -79,39 +82,81 @@ class FrameProccessor:
             self.callback(True)
 
 class FrameThread(Thread):
-    def __init__(self, camera_index, resolution=(640, 480), hash_score_threshold=50, frame_proccessor=None):
-        super().__init__()
+    def __init__(self, camera_index, resolution=(640, 480), hash_score_threshold=50, frame_proccessor=None, reconnect_backoff=(1, 10)):
+        super().__init__(daemon=True)
         if not frame_proccessor:
             raise ValueError("no frame proccessor supplied; not proceeding")
         self.frame_proccessor = frame_proccessor
         self.hash_score_threshold = hash_score_threshold
         self.camera_index = camera_index
-        self.cap = cv2.VideoCapture(camera_index)
-        width, height = resolution
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        suc, frame = self.cap.read()
-        if suc:
-            self.prev_hash = quick_hash(frame)
-        else:
-            raise RuntimeError("couldn't read camera for initial hash; not proceeding")
+        self.resolution = resolution
+        self.cap = None
+        self.frame = None
+        self.prev_hash = None
         self.running = True
+        self.reconnect_delay = reconnect_backoff[0]
+        self.reconnect_backoff = reconnect_backoff
+
+    def _open_camera(self):
+        if self.cap is not None:
+            self.cap.release()
+        logger.info("opening camera index %s", self.camera_index)
+        cap = cv2.VideoCapture(self.camera_index)
+        if not cap.isOpened():
+            logger.warning("failed to open camera index %s", self.camera_index)
+            return False
+        width, height = self.resolution
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        success, frame = cap.read()
+        if not success or frame is None:
+            logger.warning("camera opened but initial frame read failed; will retry")
+            cap.release()
+            return False
+
+        self.cap = cap
+        self.frame = frame
+        self.prev_hash = quick_hash(frame)
+        logger.info("camera connected successfully")
+        return True
 
     def run(self):
+        min_delay, max_delay = self.reconnect_backoff
         while self.running:
+            if self.cap is None or not self.cap.isOpened():
+                if not self._open_camera():
+                    logger.debug("camera not ready, sleeping for %s seconds", self.reconnect_delay)
+                    time.sleep(self.reconnect_delay)
+                    self.reconnect_delay = min(self.reconnect_delay * 2, max_delay)
+                    continue
+                self.reconnect_delay = min_delay
+            assert self.cap
             success, frame = self.cap.read()
-            if not success:
+            if not success or frame is None:
+                logger.warning("frame read failed; attempting to reopen camera")
+                self.cap.release()
+                self.cap = None
                 continue
+
             self.frame = frame
+            if self.prev_hash is None:
+                self.prev_hash = quick_hash(frame)
+                continue
+
             score = check_score(frame, self.prev_hash)
             self.prev_hash = quick_hash(frame)
             if score > self.hash_score_threshold:
                 logger.info("frame changed; checking for ring status")
-                self.frame_proccessor.proccess_frame(frame)
+                try:
+                    self.frame_proccessor.proccess_frame(frame)
+                except Exception:
+                    logger.exception("frame processing failed")
 
     def stop(self):
         self.running = False
-        self.cap.release()
+        if self.cap is not None:
+            self.cap.release()
 
 def list_cameras(max_cameras=5):
     available = []
@@ -124,23 +169,42 @@ def list_cameras(max_cameras=5):
 
 def generate_frames():
     while True:
-        frame = frame_thread.frame
-        if frame is None:
+        if main_frame_thread is None:
+            logger.debug("frame thread not yet available for streaming")
+            time.sleep(0.1)
+            continue
+
+        if not main_frame_thread.is_alive():
+            logger.error("frame thread stopped; ending stream")
             break
-        else:
-            # Encode frame as JPEG
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame_bytes = buffer.tobytes()
-            # Yield frame in HTTP multipart format
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
+        frame = getattr(main_frame_thread, "frame", None)
+        if frame is None:
+            time.sleep(0.05)
+            continue
+
+        ret, buffer = cv2.imencode('.jpg', frame)
+        if not ret:
+            logger.warning("failed to encode frame for streaming")
+            time.sleep(0.05)
+            continue
+
+        frame_bytes = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
 @app.route('/')
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 def force_proc_():
-    main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame) # type: ignore
+    if main_frame_thread is None or main_frame_thread.frame is None:
+        logger.warning("no frame available to process on demand")
+        return
+    try:
+        main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame)
+    except Exception:
+        logger.exception("manual frame processing failed")
 
 @app.route('/force_proc')
 def force_proc():
@@ -161,9 +225,13 @@ if __name__ == "__main__":
     no_ring_ratio = float(os.getenv("NO_RING_RATIO", "0.9"))
     frame_proc = FrameProccessor(notify_callback, color=color, tolerance=tolerance, no_ring_color_ratio=no_ring_ratio)
     logger.info("starting frame thread")
-    frame_thread = FrameThread(camera_index=camera_index, resolution=res, hash_score_threshold=hash_score_threshold, frame_proccessor=frame_proc)
-    frame_thread.start()
-    main_frame_thread = frame_thread
+    main_frame_thread = FrameThread(
+        camera_index=camera_index,
+        resolution=res,
+        hash_score_threshold=hash_score_threshold,
+        frame_proccessor=frame_proc
+    )
+    main_frame_thread.start()
     
     logger.info("trying to connect to MQTT broker")
     
@@ -175,5 +243,14 @@ if __name__ == "__main__":
         int(os.getenv("MQTT_TIMEOUT", "5"))
     )
     
-    app.run(host='0.0.0.0', port=5000)
-    logger.info("started http server")
+    try:
+        app.run(host='0.0.0.0', port=5000)
+        logger.info("started http server")
+    except KeyboardInterrupt:
+        logger.info("received shutdown signal")
+    finally:
+        if main_frame_thread is not None:
+            main_frame_thread.stop()
+            main_frame_thread.join(timeout=2)
+        if client is not None:
+            client.stop()
