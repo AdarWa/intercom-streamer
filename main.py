@@ -190,8 +190,13 @@ def generate_frames():
             continue
 
         frame_bytes = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        yield (
+            b'--frame\r\n'
+            b'Content-Type: image/jpeg\r\n'
+            + f'Content-Length: {len(frame_bytes)}\r\n\r\n'.encode()
+            + frame_bytes
+            + b'\r\n'
+        )
 
 @app.route('/')
 def video_feed():
