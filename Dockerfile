@@ -36,6 +36,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gir1.2-gstreamer-1.0 \
     gir1.2-gst-rtsp-server-1.0 \
     curl \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-libav \
+    gstreamer1.0-rtsp \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set PKG_CONFIG_PATH for girepository
