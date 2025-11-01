@@ -226,6 +226,8 @@ if __name__ == "__main__":
     try:
         rtspThread.start()
         logger.info("started rtsp publisher")
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         logger.info("received shutdown signal")
     finally:
