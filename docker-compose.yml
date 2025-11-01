@@ -4,6 +4,6 @@ services:
     container_name: intercom_streamer
     restart: unless-stopped
     ports:
-      - "8000:8000"  # Expose MJPEG stream
+      - "8554:8554"  # Expose RTSP stream
     devices:
       - "/dev/video0:/dev/video0"  # USB camera

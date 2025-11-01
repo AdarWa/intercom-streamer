@@ -1,11 +1,11 @@
 from threading import Thread
 import cv2
-from flask import Flask, Response
 import os
 import numpy as np
 import logging
 import mqtt
 import time
+import rtsp_stream as rtsp
 
 client = None
 MQTT_STATE_TOPIC = os.getenv("MQTT_STATE_TOPIC", "intercom-streamer/state")
@@ -16,7 +16,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
 main_frame_thread = None
 
 def notify_callback(ring_state):
@@ -157,6 +156,9 @@ class FrameThread(Thread):
         self.running = False
         if self.cap is not None:
             self.cap.release()
+            
+    def get_current_frame(self):
+        return self.frame
 
 def list_cameras(max_cameras=5):
     available = []
@@ -167,41 +169,6 @@ def list_cameras(max_cameras=5):
             cap.release()
     return available
 
-def generate_frames():
-    while True:
-        if main_frame_thread is None:
-            logger.debug("frame thread not yet available for streaming")
-            time.sleep(0.1)
-            continue
-
-        if not main_frame_thread.is_alive():
-            logger.error("frame thread stopped; ending stream")
-            break
-
-        frame = getattr(main_frame_thread, "frame", None)
-        if frame is None:
-            time.sleep(0.05)
-            continue
-
-        ret, buffer = cv2.imencode('.jpg', frame)
-        if not ret:
-            logger.warning("failed to encode frame for streaming")
-            time.sleep(0.05)
-            continue
-
-        frame_bytes = buffer.tobytes()
-        yield (
-            b'--frame\r\n'
-            b'Content-Type: image/jpeg\r\n'
-            + f'Content-Length: {len(frame_bytes)}\r\n\r\n'.encode()
-            + frame_bytes
-            + b'\r\n'
-        )
-
-@app.route('/')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
 def force_proc_():
     if main_frame_thread is None or main_frame_thread.frame is None:
         logger.warning("no frame available to process on demand")
@@ -210,11 +177,6 @@ def force_proc_():
         main_frame_thread.frame_proccessor.proccess_frame(main_frame_thread.frame)
     except Exception:
         logger.exception("manual frame processing failed")
-
-@app.route('/force_proc')
-def force_proc():
-    force_proc_()
-    return "OK"
 
 if __name__ == "__main__":
     res = (int(os.getenv("FRAME_WIDTH", "640")), int(os.getenv("FRAME_HEIGHT", "480")))
@@ -249,8 +211,12 @@ if __name__ == "__main__":
     )
     
     try:
-        app.run(host='0.0.0.0', port=5000)
-        logger.info("started http server")
+        width, height = res
+        fps = int(os.getenv("FPS", "30"))
+        stream_port = int(os.getenv("STREAM_PORT", "8554"))
+        stream_uri = os.getenv("STREAM_URI", "/stream")
+        rtsp.start_rtsp(main_frame_thread.get_current_frame, width, height, fps, stream_port, stream_uri)
+        logger.info("started rtsp server")
     except KeyboardInterrupt:
         logger.info("received shutdown signal")
     finally:
