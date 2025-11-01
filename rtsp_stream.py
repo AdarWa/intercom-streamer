@@ -34,8 +34,9 @@ class SensorFactory(GstRtspServer.RTSPMediaFactory):
         appsrc.connect('need-data', self.push_frame)
         appsrc.set_property('max-bytes', 0)
 
-        # Force RTP/UDP transport instead of TCP
-        rtsp_media.get_element().set_property("protocols", GstRtspServer.RTSPLowerTrans.UDP)
+        # Force RTP/UDP transport in Python gi
+        rtsp_media.get_element().set_property("protocols", "udp")
+
 
     def push_frame(self, src, length):
         frame = self.frame_provider()
