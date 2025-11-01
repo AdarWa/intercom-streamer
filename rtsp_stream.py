@@ -32,11 +32,7 @@ class SensorFactory(GstRtspServer.RTSPMediaFactory):
     def do_configure(self, rtsp_media):
         appsrc = rtsp_media.get_element().get_child_by_name('source')
         appsrc.connect('need-data', self.push_frame)
-        appsrc.set_property('max-bytes', 0)
-
-        # Force RTP/UDP transport in Python gi
-        rtsp_media.get_element().set_property("protocols", "udp")
-
+        appsrc.set_property('max-bytes', 0)  # avoid blocking
 
     def push_frame(self, src, length):
         frame = self.frame_provider()
@@ -65,10 +61,9 @@ class GstServer(GstRtspServer.RTSPServer):
         self.factory.set_shared(True)
         self.get_mount_points().add_factory(stream_uri, self.factory)
         self.set_service(str(port))
-        
         self.attach(None)
 
 def start_rtsp(frame_provider, width=640, height=480, fps=30, port=8554, stream_uri="/test"):
     server = GstServer(frame_provider, width, height, fps, port, stream_uri)
-    logging.info(f"RTSP UDP stream ready at rtsp://localhost:{port}{stream_uri}")
+    logging.info(f"RTSP stream ready at rtsp://localhost:{port}{stream_uri}")
     GLib.MainLoop().run()
