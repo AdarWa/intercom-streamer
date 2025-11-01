@@ -63,7 +63,6 @@ class GstServer(GstRtspServer.RTSPServer):
         super().__init__()
         self.factory = SensorFactory(frame_provider, width, height, fps)
         self.factory.set_shared(True)
-        self.factory.set_transport_mode(GstRtspServer.RTSPTransportMode.UDP)
         self.get_mount_points().add_factory(stream_uri, self.factory)
         self.set_service(str(port))
         
