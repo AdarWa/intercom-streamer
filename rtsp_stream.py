@@ -26,25 +26,25 @@ class SensorFactory(GstRtspServer.RTSPMediaFactory):
         )
 
     def on_need_data(self, src, length):
-        # Try to get a frame from the lambda
         frame = self.frame_provider()
         if frame is None:
             time.sleep(0.001)
             return
 
-        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+        frame = cv2.resize(frame, (self.width, self.height))
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
         data = frame.tobytes()
 
-        buf = Gst.Buffer.new_allocate(None, len(data), None)
-        buf.fill(0, data)
+        buf = Gst.Buffer.new_wrapped(data)
         buf.duration = self.duration
         timestamp = self.number_frames * self.duration
         buf.pts = buf.dts = int(timestamp)
-        buf.offset = timestamp
         self.number_frames += 1
+
         retval = src.emit('push-buffer', buf)
         if retval != Gst.FlowReturn.OK:
-            logging.error("Push buffer error: %s", retval)
+            logging.warning("Push buffer returned %s", retval)
+
 
     def do_create_element(self, url):
         return Gst.parse_launch(self.launch_string)
