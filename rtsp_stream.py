@@ -6,6 +6,7 @@ gi.require_version('GstRtspServer', '1.0')
 
 from gi.repository import Gst
 import logging
+import time
 
 Gst.init(None)
 
@@ -34,6 +35,9 @@ class RTSPThread(Thread):
         while self.running and not self.stop_event.is_set():
             try:
                 frame = self.frame_provider()
+                if frame is None:
+                    time.sleep(0.01)
+                    continue
 
                 buf = Gst.Buffer.new_allocate(None, frame.nbytes, None)
                 buf.fill(0, frame.tobytes())
