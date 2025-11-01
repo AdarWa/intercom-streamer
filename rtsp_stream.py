@@ -1,7 +1,6 @@
 import gi
 import cv2
-import numpy as np
-from gi.repository import Gst, GstRtspServer, GLib, GObject
+from gi.repository import Gst, GstRtspServer, GLib
 import logging
 
 gi.require_version('Gst', '1.0')
@@ -33,18 +32,19 @@ class SensorFactory(GstRtspServer.RTSPMediaFactory):
     def do_configure(self, rtsp_media):
         appsrc = rtsp_media.get_element().get_child_by_name('source')
         appsrc.connect('need-data', self.push_frame)
-        appsrc.set_property('max-bytes', 0)  # avoid blocking
+        appsrc.set_property('max-bytes', 0)
+
+        # Force RTP/UDP transport instead of TCP
+        rtsp_media.get_element().set_property("protocols", GstRtspServer.RTSPLowerTrans.UDP)
 
     def push_frame(self, src, length):
         frame = self.frame_provider()
         if frame is None:
-            return  # skip if no frame
+            return
 
-        # Resize once
         if frame.shape[1] != self.width or frame.shape[0] != self.height:
             frame = cv2.resize(frame, (self.width, self.height))
 
-        # Convert to I420 (GStreamer expects planar format)
         yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
         data = yuv.tobytes()
 
@@ -68,5 +68,5 @@ class GstServer(GstRtspServer.RTSPServer):
 
 def start_rtsp(frame_provider, width=640, height=480, fps=30, port=8554, stream_uri="/test"):
     server = GstServer(frame_provider, width, height, fps, port, stream_uri)
-    logging.info(f"RTSP stream ready at rtsp://localhost:{port}{stream_uri}")
+    logging.info(f"RTSP UDP stream ready at rtsp://localhost:{port}{stream_uri}")
     GLib.MainLoop().run()
