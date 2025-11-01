@@ -11,6 +11,7 @@ Gst.init(None)
 
 class RTSPThread(Thread):
     def __init__(self, frame_provider, width=640, height=480, fps=30, publish_uri="rtsp://127.0.0.1:8554/stream"):
+        super().__init__(daemon=True)
         self.pipeline_str = f"""
             appsrc name=src is-live=true block=true format=time !
             video/x-raw,format=BGR,width={width},height={height},framerate={fps}/1 !
