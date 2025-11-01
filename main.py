@@ -200,6 +200,19 @@ if __name__ == "__main__":
     )
     main_frame_thread.start()
     
+    logger.info("trying to initialize rtsp publisher")
+    
+    width, height = res
+    fps = int(os.getenv("FPS", "30"))
+    publish_uri = os.getenv("PUBLISH_URI", "rtsp://mediamtx:8554/stream")
+    rtspThread = rtsp.RTSPThread(
+        main_frame_thread.get_current_frame,
+        width,
+        height,
+        fps,
+        publish_uri
+    )
+    
     logger.info("trying to connect to MQTT broker")
     
     client = mqtt.MQTT(
@@ -211,17 +224,16 @@ if __name__ == "__main__":
     )
     
     try:
-        width, height = res
-        fps = int(os.getenv("FPS", "30"))
-        stream_port = int(os.getenv("STREAM_PORT", "8554"))
-        stream_uri = os.getenv("STREAM_URI", "/stream")
-        rtsp.start_rtsp(main_frame_thread.get_current_frame, width, height, fps, stream_port, stream_uri)
-        logger.info("started rtsp server")
+        rtspThread.start()
+        logger.info("started rtsp publisher")
     except KeyboardInterrupt:
         logger.info("received shutdown signal")
     finally:
         if main_frame_thread is not None:
             main_frame_thread.stop()
             main_frame_thread.join(timeout=2)
+        if rtspThread is not None:
+            rtspThread.stop()
+            rtspThread.join(timeout=2)
         if client is not None:
             client.stop()

@@ -1,69 +1,54 @@
+from threading import Event, Thread
 import gi
-import cv2
-from gi.repository import Gst, GstRtspServer, GLib
-import logging
 
 gi.require_version('Gst', '1.0')
 gi.require_version('GstRtspServer', '1.0')
 
+from gi.repository import Gst
+import logging
+
 Gst.init(None)
 
-class SensorFactory(GstRtspServer.RTSPMediaFactory):
-    def __init__(self, frame_provider, width, height, fps, **properties):
-        super().__init__(**properties)
+class RTSPThread(Thread):
+    def __init__(self, frame_provider, width=640, height=480, fps=30, publish_uri="rtsp://127.0.0.1:8554/stream"):
+        self.pipeline_str = f"""
+            appsrc name=src is-live=true block=true format=time !
+            video/x-raw,format=BGR,width={width},height={height},framerate={fps}/1 !
+            videoconvert !
+            x264enc tune=zerolatency bitrate=2048 speed-preset=ultrafast !
+            h264parse !
+            rtspclientsink location={publish_uri} protocols=tcp
+        """
         self.frame_provider = frame_provider
-        self.width = width
-        self.height = height
-        self.fps = fps
-        self.duration = Gst.SECOND // fps
-        self.number_frames = 0
+        self.pipeline = Gst.parse_launch(self.pipeline_str)
+        self.appsrc = self.pipeline.get_by_name("src")
+        self.pipeline.set_state(Gst.State.PLAYING)
+        self.pts = 0
+        self.duration = Gst.util_uint64_scale(1, Gst.SECOND, fps)
+        self.stop_event = Event()
+        self.stop_event.clear()
+        self.running = True
+    
+    def run(self):
+        while self.running and not self.stop_event.is_set():
+            try:
+                frame = self.frame_provider()
 
-        self.launch_string = (
-            f'appsrc name=source is-live=true block=false format=GST_FORMAT_TIME '
-            f'caps=video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1 '
-            '! videoconvert ! video/x-raw,format=I420 '
-            '! x264enc speed-preset=ultrafast tune=zerolatency '
-            '! rtph264pay config-interval=1 name=pay0 pt=96'
-        )
+                buf = Gst.Buffer.new_allocate(None, frame.nbytes, None)
+                buf.fill(0, frame.tobytes())
+                buf.pts = buf.dts = self.pts
+                buf.duration = self.duration
+                self.pts += self.duration
 
-    def do_create_element(self, url):
-        return Gst.parse_launch(self.launch_string)
-
-    def do_configure(self, rtsp_media):
-        appsrc = rtsp_media.get_element().get_child_by_name('source')
-        appsrc.connect('need-data', self.push_frame)
-        appsrc.set_property('max-bytes', 0)  # avoid blocking
-
-    def push_frame(self, src, length):
-        frame = self.frame_provider()
-        if frame is None:
-            return
-
-        if frame.shape[1] != self.width or frame.shape[0] != self.height:
-            frame = cv2.resize(frame, (self.width, self.height))
-
-        yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-        data = yuv.tobytes()
-
-        buf = Gst.Buffer.new_wrapped(data)
-        buf.pts = buf.dts = self.number_frames * self.duration
-        buf.duration = self.duration
-        self.number_frames += 1
-
-        ret = src.emit('push-buffer', buf)
-        if ret != Gst.FlowReturn.OK:
-            logging.warning("Push buffer returned %s", ret)
-
-class GstServer(GstRtspServer.RTSPServer):
-    def __init__(self, frame_provider, width=640, height=480, fps=30, port=8554, stream_uri="/test"):
-        super().__init__()
-        self.factory = SensorFactory(frame_provider, width, height, fps)
-        self.factory.set_shared(True)
-        self.get_mount_points().add_factory(stream_uri, self.factory)
-        self.set_service(str(port))
-        self.attach(None)
-
-def start_rtsp(frame_provider, width=640, height=480, fps=30, port=8554, stream_uri="/test"):
-    server = GstServer(frame_provider, width, height, fps, port, stream_uri)
-    logging.info(f"RTSP stream ready at rtsp://localhost:{port}{stream_uri}")
-    GLib.MainLoop().run()
+                # Push frame
+                ret = self.appsrc.emit("push-buffer", buf)
+                if ret != Gst.FlowReturn.OK:
+                    logging.warning(f"Push buffer returned {ret}")
+            except Exception as e:
+                logging.error(e)
+        self.appsrc.emit("end-of-stream")
+        self.pipeline.set_state(Gst.State.NULL)
+    
+    def stop(self):
+        self.stop_event.set()
+        self.running = False
