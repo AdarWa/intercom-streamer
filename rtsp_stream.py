@@ -1,72 +1,72 @@
 import gi
 import cv2
-import time
-from gi.repository import Gst, GstRtspServer, GObject
+import numpy as np
+from gi.repository import Gst, GstRtspServer, GLib, GObject
 import logging
 
 gi.require_version('Gst', '1.0')
 gi.require_version('GstRtspServer', '1.0')
 
+Gst.init(None)
+
 class SensorFactory(GstRtspServer.RTSPMediaFactory):
     def __init__(self, frame_provider, width, height, fps, **properties):
-        super(SensorFactory, self).__init__(**properties)
-        self.frame_provider = frame_provider  # lambda or callable returning a frame (np.ndarray BGR)
-        self.number_frames = 0
-        self.fps = fps
+        super().__init__(**properties)
+        self.frame_provider = frame_provider
         self.width = width
         self.height = height
-        self.duration = 1 / self.fps * Gst.SECOND
+        self.fps = fps
+        self.duration = Gst.SECOND // fps
+        self.number_frames = 0
 
         self.launch_string = (
-            f'appsrc name=source is-live=true block=true format=GST_FORMAT_TIME '
+            f'appsrc name=source is-live=true block=false format=GST_FORMAT_TIME '
             f'caps=video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1 '
             '! videoconvert ! video/x-raw,format=I420 '
             '! x264enc speed-preset=ultrafast tune=zerolatency '
             '! rtph264pay config-interval=1 name=pay0 pt=96'
         )
 
-    def on_need_data(self, src, length):
-        frame = self.frame_provider()
-        if frame is None:
-            time.sleep(0.001)
-            return
-
-        frame = cv2.resize(frame, (self.width, self.height))
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-        data = frame.tobytes()
-
-        buf = Gst.Buffer.new_wrapped(data)
-        buf.duration = self.duration
-        timestamp = self.number_frames * self.duration
-        buf.pts = buf.dts = int(timestamp)
-        self.number_frames += 1
-
-        retval = src.emit('push-buffer', buf)
-        if retval != Gst.FlowReturn.OK:
-            logging.warning("Push buffer returned %s", retval)
-
-
     def do_create_element(self, url):
         return Gst.parse_launch(self.launch_string)
 
     def do_configure(self, rtsp_media):
-        self.number_frames = 0
         appsrc = rtsp_media.get_element().get_child_by_name('source')
-        appsrc.connect('need-data', self.on_need_data)
+        appsrc.connect('need-data', self.push_frame)
+        appsrc.set_property('max-bytes', 0)  # avoid blocking
+
+    def push_frame(self, src, length):
+        frame = self.frame_provider()
+        if frame is None:
+            return  # skip if no frame
+
+        # Resize once
+        if frame.shape[1] != self.width or frame.shape[0] != self.height:
+            frame = cv2.resize(frame, (self.width, self.height))
+
+        # Convert to I420 (GStreamer expects planar format)
+        yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+        data = yuv.tobytes()
+
+        buf = Gst.Buffer.new_wrapped(data)
+        buf.pts = buf.dts = self.number_frames * self.duration
+        buf.duration = self.duration
+        self.number_frames += 1
+
+        ret = src.emit('push-buffer', buf)
+        if ret != Gst.FlowReturn.OK:
+            logging.warning("Push buffer returned %s", ret)
 
 class GstServer(GstRtspServer.RTSPServer):
-    def __init__(self, frame_provider, width=640, height=480, fps=30, port=8554, stream_uri="/test", **properties):
-        super(GstServer, self).__init__(**properties)
+    def __init__(self, frame_provider, width=640, height=480, fps=30, port=8554, stream_uri="/test"):
+        super().__init__()
         self.factory = SensorFactory(frame_provider, width, height, fps)
         self.factory.set_shared(True)
-        self.set_service(str(port))
         self.get_mount_points().add_factory(stream_uri, self.factory)
+        self.set_service(str(port))
         self.attach(None)
 
 def start_rtsp(frame_provider, width=640, height=480, fps=30, port=8554, stream_uri="/test"):
-    GObject.threads_init()
-    Gst.init(None)
     server = GstServer(frame_provider, width, height, fps, port, stream_uri)
-    loop = GObject.MainLoop()
     logging.info(f"RTSP stream ready at rtsp://localhost:{port}{stream_uri}")
-    loop.run()
+    GLib.MainLoop().run()
