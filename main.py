@@ -1,6 +1,6 @@
 from threading import Thread
 import cv2
-from flask import Flask, Response
+from flask import Flask, Response, request, abort
 import os
 import numpy as np
 import logging
@@ -18,6 +18,19 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 main_frame_thread = None
+HTTP_AUTH_TOKEN = os.getenv("HTTP_AUTH_TOKEN")
+HTTP_AUTH_QUERY_PARAM = os.getenv("HTTP_AUTH_QUERY_PARAM", "auth")
+
+
+@app.before_request
+def enforce_query_auth():
+    if not HTTP_AUTH_TOKEN:
+        return None
+    supplied = request.args.get(HTTP_AUTH_QUERY_PARAM)
+    if supplied != HTTP_AUTH_TOKEN:
+        logger.warning("request rejected due to invalid query auth token")
+        abort(401)
+    return None
 
 def notify_callback(ring_state):
     logger.info(f"notify callback got {ring_state} ringstate")

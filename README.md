@@ -34,6 +34,8 @@ Intercom Streamer captures frames from a camera, detects whether the intercom ha
 - `/` — MJPEG stream that serves the latest camera frames.
 - `/force_proc` — Forces the detection pipeline to re-evaluate the current frame and publish the result.
 
+When `HTTP_AUTH_TOKEN` is set, every HTTP request must include the configured query parameter (defaults to `?auth=...`). Requests without the correct token receive a `401 Unauthorized` response.
+
 ## MQTT
 The app connects to the configured broker on startup and publishes state updates to `MQTT_STATE_TOPIC`. Messages are simple lowercase strings: `"true"` when a ring is detected, `"false"` when the scene returns to normal.
 
@@ -57,9 +59,10 @@ The app connects to the configured broker on startup and publishes state updates
 | `TOLERANCE_S` | `50` | Saturation tolerance applied when building the HSV mask. |
 | `TOLERANCE_V` | `50` | Value/brightness tolerance applied when building the HSV mask. |
 | `NO_RING_RATIO` | `0.9` | Minimum ratio of matching pixels to conclude “no ring”. Lower to allow partial matches to count as a ring. |
+| `HTTP_AUTH_TOKEN` | _(unset)_ | Token value required in the query string for HTTP requests. When unset, authentication is disabled. |
+| `HTTP_AUTH_QUERY_PARAM` | `auth` | Query parameter name that carries the token when `HTTP_AUTH_TOKEN` is set. |
 
 ## Troubleshooting
 - Verify the container (or host) user has permission to access `/dev/video*` devices.
 - Adjust `TOLERANCE_*`, `COLOR`, or `NO_RING_RATIO` if the detector produces false positives/negatives.
 - Set `LOGGING_LEVEL=DEBUG` to surface detailed diagnostics for the detection pipeline and MQTT traffic.
-
